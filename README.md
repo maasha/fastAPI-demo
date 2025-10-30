@@ -1,4 +1,4 @@
-# Analytics Platform Demo
+# FastAPI Demo
 
 A full-stack analytics platform demonstrating modern web technologies for data management and visualization. This project showcases the integration of Python-based backend services with interactive data visualization dashboards.
 
