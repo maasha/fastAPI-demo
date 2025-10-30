@@ -1,11 +1,16 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from sqlalchemy.orm import Session
 from app.models import User, UserCreate, UserUpdate
+from app.database import engine, get_db
+from app import db_models
+from app.db_models import UserDB
 
 app = FastAPI()
 
-# In-memory storage (temporary - will be replaced with PostgreSQL later)
-users_db = []
-user_id_counter = 1
+# Create database tables on startup
+@app.on_event("startup")
+def on_startup():
+    db_models.Base.metadata.create_all(bind=engine)
 
 
 @app.get("/")
@@ -28,68 +33,68 @@ def about():
 
 
 @app.post("/users", response_model=User)
-def create_user(user: UserCreate):
+def create_user(user: UserCreate, db: Session = Depends(get_db)):
     """Create a new user"""
-    global user_id_counter
+    # Create database user object
+    db_user = UserDB(
+        name=user.name,
+        age=user.age,
+        address=user.address
+    )
     
-    # Create user dictionary with ID
-    new_user = {
-        "id": user_id_counter,
-        "name": user.name,
-        "age": user.age,
-        "address": user.address
-    }
+    # Add to database and commit
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
     
-    # Add to database and increment counter
-    users_db.append(new_user)
-    user_id_counter += 1
-    
-    return new_user
+    return db_user
 
 
 @app.get("/users", response_model=list[User])
-def get_all_users():
+def get_all_users(db: Session = Depends(get_db)):
     """Get all users"""
-    return users_db
+    return db.query(UserDB).all()
 
 
 @app.get("/users/{user_id}", response_model=User)
-def get_user(user_id: int):
+def get_user(user_id: int, db: Session = Depends(get_db)):
     """Get a single user by ID"""
-    for user in users_db:
-        if user["id"] == user_id:
-            return user
+    user = db.query(UserDB).filter(UserDB.id == user_id).first()
     
-    # User not found
-    raise HTTPException(status_code=404, detail=f"User with id {user_id} not found")
+    if user is None:
+        raise HTTPException(status_code=404, detail=f"User with id {user_id} not found")
+    
+    return user
 
 
 @app.put("/users/{user_id}", response_model=User)
-def update_user(user_id: int, user_update: UserUpdate):
+def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
     """Update a user by ID"""
-    for user in users_db:
-        if user["id"] == user_id:
-            # Update only the fields that were provided
-            if user_update.name is not None:
-                user["name"] = user_update.name
-            if user_update.age is not None:
-                user["age"] = user_update.age
-            if user_update.address is not None:
-                user["address"] = user_update.address
-            
-            return user
+    user = db.query(UserDB).filter(UserDB.id == user_id).first()
     
-    # User not found
-    raise HTTPException(status_code=404, detail=f"User with id {user_id} not found")
+    if user is None:
+        raise HTTPException(status_code=404, detail=f"User with id {user_id} not found")
+    
+    # Update only the fields that were provided
+    update_data = user_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(user, key, value)
+    
+    db.commit()
+    db.refresh(user)
+    
+    return user
 
 
 @app.delete("/users/{user_id}")
-def delete_user(user_id: int):
+def delete_user(user_id: int, db: Session = Depends(get_db)):
     """Delete a user by ID"""
-    for i, user in enumerate(users_db):
-        if user["id"] == user_id:
-            users_db.pop(i)
-            return {"message": f"User {user_id} deleted successfully"}
+    user = db.query(UserDB).filter(UserDB.id == user_id).first()
     
-    # User not found
-    raise HTTPException(status_code=404, detail=f"User with id {user_id} not found")
+    if user is None:
+        raise HTTPException(status_code=404, detail=f"User with id {user_id} not found")
+    
+    db.delete(user)
+    db.commit()
+    
+    return {"message": f"User {user_id} deleted successfully"}
