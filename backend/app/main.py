@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.models import User, UserCreate, UserUpdate
 from app.database import engine, get_db
@@ -6,6 +7,15 @@ from app import db_models
 from app.db_models import UserDB
 
 app = FastAPI()
+
+# Add CORS middleware to allow R-Shiny dashboard to access the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3838", "http://127.0.0.1:3838"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Create database tables on startup
 @app.on_event("startup")
